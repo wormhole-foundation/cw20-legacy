@@ -30,8 +30,9 @@ pub fn query_all_allowances(
 ) -> StdResult<AllAllowancesResponse> {
     let owner_addr = deps.api.addr_canonicalize(&owner)?;
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start =
-        calc_range_start_human(deps.api, start_after.map(Addr::unchecked))?.map(Bound::exclusive);
+    let start: Option<Bound<'_, &[u8]>> =
+        calc_range_start_human(deps.api, start_after.map(Addr::unchecked))?
+            .map(Bound::ExclusiveRaw);
 
     let allowances: StdResult<Vec<AllowanceInfo>> = ALLOWANCES
         .prefix(owner_addr.as_slice())
@@ -57,14 +58,14 @@ pub fn query_all_accounts(
     limit: Option<u32>,
 ) -> StdResult<AllAccountsResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start =
-        calc_range_start_human(deps.api, start_after.map(Addr::unchecked))?.map(Bound::exclusive);
+    let start = calc_range_start_human(deps.api, start_after.map(Addr::unchecked))?
+        .map(Bound::ExclusiveRaw);
 
     let accounts: Result<Vec<_>, _> = BALANCES
         .keys(deps.storage, start, None, Order::Ascending)
         .map(|k| {
             deps.api
-                .addr_humanize(&CanonicalAddr::from(k))
+                .addr_humanize(&CanonicalAddr::from(k?))
                 .map(|v| v.to_string())
         })
         .take(limit)
@@ -79,7 +80,9 @@ pub fn query_all_accounts(
 mod tests {
     use super::*;
 
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::testing::{
+        mock_dependencies, mock_dependencies_with_balance, mock_env, mock_info,
+    };
     use cosmwasm_std::Api;
     use cosmwasm_std::{coins, DepsMut, Uint128};
     use cw20::{Cw20Coin, Expiration, TokenInfoResponse};
@@ -107,7 +110,7 @@ mod tests {
 
     #[test]
     fn query_all_allowances_works() {
-        let mut deps = mock_dependencies(&coins(2, "token"));
+        let mut deps = mock_dependencies_with_balance(&coins(2, "token"));
 
         let owner = String::from("owner");
         // these are in alphabetical order same than insert order
@@ -183,7 +186,7 @@ mod tests {
 
     #[test]
     fn query_all_accounts_works() {
-        let mut deps = mock_dependencies(&coins(2, "token"));
+        let mut deps = mock_dependencies_with_balance(&coins(2, "token"));
 
         // insert order and lexicographical order are different
         let acct1 = deps
@@ -365,7 +368,7 @@ mod tests {
 
     #[test]
     fn balances_legacy_compatibility() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let mut balances = legacy_balances(&mut deps.storage);
         let addr1 = deps.api.addr_canonicalize("addr0000").unwrap();
         let addr2 = deps.api.addr_canonicalize("addr0001").unwrap();
@@ -394,7 +397,7 @@ mod tests {
 
     #[test]
     fn allowance_legacy_compatibility() {
-        let mut deps = mock_dependencies(&[]);
+        let mut deps = mock_dependencies();
         let owner_addr = deps.api.addr_canonicalize("owner0000").unwrap();
         let owner_key = owner_addr.as_slice();
         let addr1 = deps.api.addr_canonicalize("addr0000").unwrap();
